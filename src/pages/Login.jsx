@@ -5,7 +5,7 @@ import { SESS_KEY, BACKEND_URL } from '../lib/utils';
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS   = 5 * 60 * 1000; // 5 menit
 
-// ── Device fingerprint (mirrors login.html) ───────────────────────
+// ── Device fingerprint ────────────────────────────────────────────
 function getFingerprint() {
   const nav = window.navigator;
   const parts = [
@@ -36,25 +36,55 @@ function getAttempts() {
 function setAttempts(data) { localStorage.setItem('pgsk_bf', JSON.stringify(data)); }
 function clearAttempts()   { localStorage.removeItem('pgsk_bf'); }
 
+// ── Jabatan list (sesuai permintaan) ─────────────────────────────
 const JABATAN_LIST = [
-  'Komandan', 'Wakil Komandan', 'Sekretaris', 'Bendahara',
-  'Kadiv Pelatihan', 'Kadiv Humas', 'Kadiv Perlengkapan',
+  'Ketua Umum', 'Wakil Ketua Umum',
+  'Sekretaris', 'Bendahara',
+  'Koor Infokom', 'Koor GK3', 'Koor Disarda',
+  'Pelatih',
   'Anggota Aktif', 'Alumni', 'Pembina',
 ];
 
+// ── Cari user dari PAGASKA_DB (db.js hardcoded) ──────────────────
+function findUserInDB(nama) {
+  const db = window.PAGASKA_DB;
+  if (!db) return null;
+  const q = nama.trim().toLowerCase();
+  // Cek di pagaskaGenerations
+  const gens = db.pagaskaGenerations;
+  for (const [gen, members] of Object.entries(gens)) {
+    for (const m of members) {
+      if (m.nama.toLowerCase() === q) {
+        return { ...m, generasi: String(gen) };
+      }
+    }
+  }
+  // Cek di _extraUsers (register lokal)
+  const extras = db._extraUsers || [];
+  const found = extras.find(u => u.nama.toLowerCase() === q);
+  if (found) return found;
+  return null;
+}
+
+// Cek fingerprint sudah dipakai di extra users
+function fingerprintUsed(fp) {
+  const db = window.PAGASKA_DB;
+  if (!db) return false;
+  const extras = db._extraUsers || [];
+  return extras.some(u => u.fingerprint === fp);
+}
+
 export default function Login() {
-  const [mode, setMode]       = useState('login'); // 'login' | 'register'
+  const [mode, setMode]       = useState('login');
   const [nama, setNama]       = useState('');
   const [jabatan, setJabatan] = useState('');
   const [gen, setGen]         = useState('');
-  const [pw, setPw]           = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
   const [locked, setLocked]   = useState(false);
   const [lockLeft, setLockLeft] = useState(0);
   const timerRef = useRef(null);
 
-  // Check lockout on mount
   useEffect(() => {
     checkLockout();
     return () => clearInterval(timerRef.current);
@@ -89,6 +119,25 @@ export default function Login() {
     }, 1000);
   };
 
+  const buildSession = (user, fp) => ({
+    nama:        user.nama,
+    jabatan:     user.jabatan || '–',
+    generasi:    user.generasi || '?',
+    member_id:   user.id || user.nama,
+    is_admin:    user.is_admin || false,
+    fingerprint: fp,
+    loginAt:     Date.now(),
+  });
+
+  const notifyLogin = (payload) => {
+    fetch(`${BACKEND_URL}/api/notify-login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, ua: navigator.userAgent.slice(0, 120) }),
+    }).catch(() => {});
+  };
+
+  // ── LOGIN ────────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e?.preventDefault();
     if (locked) return;
@@ -97,74 +146,41 @@ export default function Login() {
     setLoading(true);
     setError('');
 
-    try {
-      // Fetch config first to get SB URL/KEY
-      const cfgRes = await fetch('/api/config');
-      if (!cfgRes.ok) throw new Error('Config error');
-      const cfg = await cfgRes.json();
-      window.SB_URL = cfg.url;
-      window.SB_KEY = cfg.key;
+    // Tunggu db.js siap (biasanya sudah tersedia saat ini)
+    const user = findUserInDB(nama);
 
-      // Fetch user from Supabase
-      const res = await fetch(
-        `${cfg.url}/rest/v1/members?nama=ilike.${encodeURIComponent(nama.trim())}&limit=1`,
-        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
-      );
-      if (!res.ok) throw new Error('Login gagal: ' + res.status);
-      const rows = await res.json();
-
-      if (!rows?.length) {
-        // Bad attempt
-        const bf = getAttempts();
-        const newCount = bf.count + 1;
-        setAttempts({ count: newCount, at: Date.now() });
-        if (newCount >= MAX_ATTEMPTS) {
-          setLocked(true);
-          startLockTimer(LOCKOUT_MS);
-          setError(`Terlalu banyak percobaan. Tunggu 5 menit.`);
-        } else {
-          setError(`Nama tidak ditemukan. (${newCount}/${MAX_ATTEMPTS})`);
-        }
-        setLoading(false);
-        return;
+    if (!user) {
+      const bf = getAttempts();
+      const newCount = bf.count + 1;
+      setAttempts({ count: newCount, at: Date.now() });
+      if (newCount >= MAX_ATTEMPTS) {
+        setLocked(true);
+        startLockTimer(LOCKOUT_MS);
+        setError('Terlalu banyak percobaan. Tunggu 5 menit.');
+      } else {
+        setError(`Nama tidak ditemukan. (${newCount}/${MAX_ATTEMPTS})`);
       }
-
-      // Success — build session
-      const user = rows[0];
-      clearAttempts();
-
-      const fingerprint = getFingerprint();
-      const session = {
-        nama:       user.nama,
-        jabatan:    user.jabatan     || jabatan || '–',
-        generasi:   user.generasi    || gen || '?',
-        member_id:  user.id,
-        is_admin:   user.is_admin    || false,
-        fingerprint,
-        loginAt:    Date.now(),
-      };
-      localStorage.setItem(SESS_KEY, JSON.stringify(session));
-
-      // Send Telegram notification (fire & forget)
-      fetch(`${BACKEND_URL}/api/notify-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nama:        user.nama,
-          jabatan:     user.jabatan || '–',
-          generasi:    user.generasi || '?',
-          fingerprint,
-          ua:          navigator.userAgent.slice(0, 120),
-        }),
-      }).catch(() => {});
-
-      window.location.href = '/';
-    } catch (e) {
-      setError(e.message || 'Login gagal');
+      setLoading(false);
+      return;
     }
+
+    clearAttempts();
+    const fp = getFingerprint();
+    const session = buildSession(user, fp);
+    localStorage.setItem(SESS_KEY, JSON.stringify(session));
+
+    notifyLogin({
+      nama: user.nama,
+      jabatan: user.jabatan || '–',
+      generasi: user.generasi || '?',
+      fingerprint: fp,
+    });
+
+    window.location.href = '/';
     setLoading(false);
   };
 
+  // ── REGISTER (extra users — disimpan di localStorage) ────────────
   const handleRegister = async (e) => {
     e?.preventDefault();
     if (!nama.trim())    { setError('Masukkan nama'); return; }
@@ -174,83 +190,53 @@ export default function Login() {
     setLoading(true);
     setError('');
 
-    try {
-      const cfgRes = await fetch('/api/config');
-      if (!cfgRes.ok) throw new Error('Config error');
-      const cfg = await cfgRes.json();
-      window.SB_URL = cfg.url;
-      window.SB_KEY = cfg.key;
-
-      const fp = getFingerprint();
-
-      // Check if name already exists
-      const check = await fetch(
-        `${cfg.url}/rest/v1/members?nama=ilike.${encodeURIComponent(nama.trim())}&limit=1`,
-        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
-      ).then(r => r.json());
-      if (check?.length) { setError('Nama sudah terdaftar, coba login'); setLoading(false); return; }
-
-      // Check fingerprint
-      const fpCheck = await fetch(
-        `${cfg.url}/rest/v1/members?fingerprint=eq.${encodeURIComponent(fp)}&limit=1`,
-        { headers: { apikey: cfg.key, Authorization: `Bearer ${cfg.key}` } }
-      ).then(r => r.json());
-      if (fpCheck?.length) {
-        setError('Perangkat ini sudah pernah digunakan untuk mendaftar dengan akun lain.');
-        setLoading(false);
-        return;
-      }
-
-      // Register
-      const res = await fetch(`${cfg.url}/rest/v1/members`, {
-        method: 'POST',
-        headers: {
-          apikey: cfg.key,
-          Authorization: `Bearer ${cfg.key}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=representation',
-        },
-        body: JSON.stringify({
-          nama:        nama.trim(),
-          jabatan:     jabatan.trim(),
-          generasi:    gen,
-          fingerprint: fp,
-          is_admin:    false,
-          created_at:  new Date().toISOString(),
-        }),
-      });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error('Daftar gagal: ' + txt.slice(0, 100));
-      }
-      const newUser = await res.json();
-      const user = Array.isArray(newUser) ? newUser[0] : newUser;
-
-      const session = {
-        nama:      user.nama,
-        jabatan:   user.jabatan,
-        generasi:  user.generasi,
-        member_id: user.id,
-        is_admin:  false,
-        fingerprint: fp,
-        loginAt:   Date.now(),
-      };
-      localStorage.setItem(SESS_KEY, JSON.stringify(session));
-
-      // Notify
-      fetch(`${BACKEND_URL}/api/notify-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nama: user.nama, jabatan: user.jabatan, generasi: user.generasi,
-          fingerprint: fp, ua: navigator.userAgent.slice(0, 120), type: 'register',
-        }),
-      }).catch(() => {});
-
-      window.location.href = '/';
-    } catch (e) {
-      setError(e.message || 'Pendaftaran gagal');
+    // Cek nama sudah ada
+    if (findUserInDB(nama)) {
+      setError('Nama sudah terdaftar, coba login');
+      setLoading(false);
+      return;
     }
+
+    const fp = getFingerprint();
+
+    // Cek fingerprint
+    if (fingerprintUsed(fp)) {
+      setError('Perangkat ini sudah pernah digunakan untuk mendaftar dengan akun lain.');
+      setLoading(false);
+      return;
+    }
+
+    // Simpan ke extraUsers di localStorage
+    const extras = JSON.parse(localStorage.getItem('pgsk_extra_users') || '[]');
+    const newUser = {
+      nama:        nama.trim(),
+      jabatan:     jabatan.trim(),
+      generasi:    gen,
+      fingerprint: fp,
+      is_admin:    false,
+      id:          `extra_${Date.now()}`,
+      created_at:  new Date().toISOString(),
+    };
+    extras.push(newUser);
+    localStorage.setItem('pgsk_extra_users', JSON.stringify(extras));
+
+    // Update PAGASKA_DB runtime
+    if (window.PAGASKA_DB) {
+      window.PAGASKA_DB._extraUsers = extras;
+    }
+
+    const session = buildSession(newUser, fp);
+    localStorage.setItem(SESS_KEY, JSON.stringify(session));
+
+    notifyLogin({
+      nama: newUser.nama,
+      jabatan: newUser.jabatan,
+      generasi: newUser.generasi,
+      fingerprint: fp,
+      type: 'register',
+    });
+
+    window.location.href = '/';
     setLoading(false);
   };
 
