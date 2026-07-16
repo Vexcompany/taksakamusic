@@ -1,7 +1,10 @@
 // src/lib/utils.js
 
 export const PH = 'https://placehold.co/200x200/0d0d24/1DB954?text=♪';
-export const BACKEND_URL = 'https://verolyz-kingdom3.vercel.app';
+
+// BACKEND_URL: pakai env variable (set di Vercel), fallback ke hardcoded
+export const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://verolyz-kingdom3.vercel.app';
+
 export const SESS_KEY = 'pgsk_v2_session';
 
 export function fmt(s) {
@@ -66,7 +69,7 @@ export function getUserKey(session) {
   return `${session.nama}_${session.generasi}`;
 }
 
-// LocalStorage helpers for queue/history/liked (mirroring original LS object)
+// LocalStorage helpers for queue/history/liked
 export const LS = {
   q()       { return JSON.parse(localStorage.getItem('pm2_q') || '[]'); },
   sq(v)     { localStorage.setItem('pm2_q', JSON.stringify(v)); },
