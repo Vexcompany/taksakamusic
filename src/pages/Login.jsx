@@ -1,21 +1,20 @@
 // src/pages/Login.jsx
+// Auth via /api/sb proxy → Supabase members table (RLS: deny all anon)
+// Key tidak pernah bocor ke client
+
 import { useState, useEffect, useRef } from 'react';
 import { SESS_KEY, BACKEND_URL } from '../lib/utils';
 
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS   = 5 * 60 * 1000; // 5 menit
+const LOCKOUT_MS   = 5 * 60 * 1000;
 
 // ── Device fingerprint ────────────────────────────────────────────
 function getFingerprint() {
   const nav = window.navigator;
   const parts = [
-    nav.userAgent,
-    nav.language,
-    nav.hardwareConcurrency,
-    nav.maxTouchPoints,
-    screen.width + 'x' + screen.height,
-    screen.colorDepth,
-    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    nav.userAgent, nav.language, nav.hardwareConcurrency,
+    nav.maxTouchPoints, screen.width + 'x' + screen.height,
+    screen.colorDepth, Intl.DateTimeFormat().resolvedOptions().timeZone,
     new Date().getTimezoneOffset(),
   ];
   let hash = 0;
@@ -33,10 +32,25 @@ function getAttempts() {
   try { return JSON.parse(localStorage.getItem('pgsk_bf') || '{"count":0,"at":0}'); }
   catch { return { count: 0, at: 0 }; }
 }
-function setAttempts(data) { localStorage.setItem('pgsk_bf', JSON.stringify(data)); }
-function clearAttempts()   { localStorage.removeItem('pgsk_bf'); }
+function setAttempts(d) { localStorage.setItem('pgsk_bf', JSON.stringify(d)); }
+function clearAttempts() { localStorage.removeItem('pgsk_bf'); }
 
-// ── Jabatan list (sesuai permintaan) ─────────────────────────────
+// ── Query via /api/sb proxy (service_role di server) ─────────────
+async function sbProxy(method, path, body, prefer) {
+  const res = await fetch('/api/sb', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ method, path, body, prefer }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ── Jabatan list ──────────────────────────────────────────────────
 const JABATAN_LIST = [
   'Ketua Umum', 'Wakil Ketua Umum',
   'Sekretaris', 'Bendahara',
@@ -45,43 +59,14 @@ const JABATAN_LIST = [
   'Anggota Aktif', 'Alumni', 'Pembina',
 ];
 
-// ── Cari user dari PAGASKA_DB (db.js hardcoded) ──────────────────
-function findUserInDB(nama) {
-  const db = window.PAGASKA_DB;
-  if (!db) return null;
-  const q = nama.trim().toLowerCase();
-  // Cek di pagaskaGenerations
-  const gens = db.pagaskaGenerations;
-  for (const [gen, members] of Object.entries(gens)) {
-    for (const m of members) {
-      if (m.nama.toLowerCase() === q) {
-        return { ...m, generasi: String(gen) };
-      }
-    }
-  }
-  // Cek di _extraUsers (register lokal)
-  const extras = db._extraUsers || [];
-  const found = extras.find(u => u.nama.toLowerCase() === q);
-  if (found) return found;
-  return null;
-}
-
-// Cek fingerprint sudah dipakai di extra users
-function fingerprintUsed(fp) {
-  const db = window.PAGASKA_DB;
-  if (!db) return false;
-  const extras = db._extraUsers || [];
-  return extras.some(u => u.fingerprint === fp);
-}
-
 export default function Login() {
-  const [mode, setMode]       = useState('login');
-  const [nama, setNama]       = useState('');
-  const [jabatan, setJabatan] = useState('');
-  const [gen, setGen]         = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
-  const [locked, setLocked]   = useState(false);
+  const [mode, setMode]         = useState('login');
+  const [nama, setNama]         = useState('');
+  const [jabatan, setJabatan]   = useState('');
+  const [gen, setGen]           = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState('');
+  const [locked, setLocked]     = useState(false);
   const [lockLeft, setLockLeft] = useState(0);
   const timerRef = useRef(null);
 
@@ -94,13 +79,8 @@ export default function Login() {
     const bf = getAttempts();
     if (bf.count >= MAX_ATTEMPTS) {
       const elapsed = Date.now() - bf.at;
-      if (elapsed < LOCKOUT_MS) {
-        setLocked(true);
-        startLockTimer(LOCKOUT_MS - elapsed);
-      } else {
-        clearAttempts();
-        setLocked(false);
-      }
+      if (elapsed < LOCKOUT_MS) { setLocked(true); startLockTimer(LOCKOUT_MS - elapsed); }
+      else { clearAttempts(); setLocked(false); }
     }
   };
 
@@ -108,36 +88,13 @@ export default function Login() {
     setLockLeft(Math.ceil(remaining / 1000));
     timerRef.current = setInterval(() => {
       setLockLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current);
-          clearAttempts();
-          setLocked(false);
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(timerRef.current); clearAttempts(); setLocked(false); return 0; }
         return prev - 1;
       });
     }, 1000);
   };
 
-  const buildSession = (user, fp) => ({
-    nama:        user.nama,
-    jabatan:     user.jabatan || '–',
-    generasi:    user.generasi || '?',
-    member_id:   user.id || user.nama,
-    is_admin:    user.is_admin || false,
-    fingerprint: fp,
-    loginAt:     Date.now(),
-  });
-
-  const notifyLogin = (payload) => {
-    fetch(`${BACKEND_URL}/api/notify-login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, ua: navigator.userAgent.slice(0, 120) }),
-    }).catch(() => {});
-  };
-
-  // ── LOGIN ────────────────────────────────────────────────────────
+  // ── LOGIN ──────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e?.preventDefault();
     if (locked) return;
@@ -146,41 +103,67 @@ export default function Login() {
     setLoading(true);
     setError('');
 
-    // Tunggu db.js siap (biasanya sudah tersedia saat ini)
-    const user = findUserInDB(nama);
+    try {
+      // Query via proxy — nama case-insensitive, limit 1
+      const rows = await sbProxy('GET',
+        `members?nama=ilike.${encodeURIComponent(nama.trim())}&limit=1`
+      );
 
-    if (!user) {
-      const bf = getAttempts();
-      const newCount = bf.count + 1;
-      setAttempts({ count: newCount, at: Date.now() });
-      if (newCount >= MAX_ATTEMPTS) {
-        setLocked(true);
-        startLockTimer(LOCKOUT_MS);
-        setError('Terlalu banyak percobaan. Tunggu 5 menit.');
-      } else {
-        setError(`Nama tidak ditemukan. (${newCount}/${MAX_ATTEMPTS})`);
+      if (!rows?.length) {
+        const bf = getAttempts();
+        const newCount = bf.count + 1;
+        setAttempts({ count: newCount, at: Date.now() });
+        if (newCount >= MAX_ATTEMPTS) {
+          setLocked(true); startLockTimer(LOCKOUT_MS);
+          setError('Terlalu banyak percobaan. Tunggu 5 menit.');
+        } else {
+          setError(`Nama tidak ditemukan. (${newCount}/${MAX_ATTEMPTS})`);
+        }
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-      return;
+
+      const user = rows[0];
+      clearAttempts();
+
+      const fingerprint = getFingerprint();
+      const session = {
+        nama:        user.nama,
+        jabatan:     user.jabatan || '–',
+        generasi:    user.generasi ? String(user.generasi) : '?',
+        member_id:   user.id,
+        is_admin:    user.is_admin || false,
+        fingerprint,
+        loginAt:     Date.now(),
+      };
+      localStorage.setItem(SESS_KEY, JSON.stringify(session));
+
+      // Simpan fingerprint ke DB (fire & forget)
+      sbProxy('PATCH',
+        `members?id=eq.${encodeURIComponent(user.id)}`,
+        { fingerprint },
+        'return=minimal'
+      ).catch(() => {});
+
+      // Notif Telegram (fire & forget)
+      fetch(`${BACKEND_URL}/api/notify-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nama: user.nama, jabatan: user.jabatan || '–',
+          generasi: user.generasi || '?', fingerprint,
+          ua: navigator.userAgent.slice(0, 120),
+        }),
+      }).catch(() => {});
+
+      window.location.href = '/';
+    } catch (e) {
+      setError(e.message || 'Login gagal');
     }
-
-    clearAttempts();
-    const fp = getFingerprint();
-    const session = buildSession(user, fp);
-    localStorage.setItem(SESS_KEY, JSON.stringify(session));
-
-    notifyLogin({
-      nama: user.nama,
-      jabatan: user.jabatan || '–',
-      generasi: user.generasi || '?',
-      fingerprint: fp,
-    });
-
-    window.location.href = '/';
     setLoading(false);
   };
 
-  // ── REGISTER (extra users — disimpan di localStorage) ────────────
+  // ── REGISTER ───────────────────────────────────────────────────
   const handleRegister = async (e) => {
     e?.preventDefault();
     if (!nama.trim())    { setError('Masukkan nama'); return; }
@@ -190,59 +173,75 @@ export default function Login() {
     setLoading(true);
     setError('');
 
-    // Cek nama sudah ada
-    if (findUserInDB(nama)) {
-      setError('Nama sudah terdaftar, coba login');
-      setLoading(false);
-      return;
+    try {
+      const fp = getFingerprint();
+
+      // Cek nama sudah ada
+      const existing = await sbProxy('GET',
+        `members?nama=ilike.${encodeURIComponent(nama.trim())}&limit=1`
+      );
+      if (existing?.length) {
+        setError('Nama sudah terdaftar, coba login');
+        setLoading(false);
+        return;
+      }
+
+      // Cek fingerprint sudah dipakai
+      const fpCheck = await sbProxy('GET',
+        `members?fingerprint=eq.${encodeURIComponent(fp)}&limit=1`
+      );
+      if (fpCheck?.length) {
+        setError('Perangkat ini sudah pernah digunakan untuk mendaftar.');
+        setLoading(false);
+        return;
+      }
+
+      // Register — insert ke Supabase via proxy
+      const newRows = await sbProxy(
+        'POST',
+        'members',
+        {
+          nama:        nama.trim(),
+          jabatan:     jabatan.trim(),
+          generasi:    parseInt(gen),
+          tipe:        'anggota_baru',
+          fingerprint: fp,
+          is_admin:    false,
+        },
+        'return=representation'
+      );
+
+      const newUser = Array.isArray(newRows) ? newRows[0] : newRows;
+      const session = {
+        nama:        newUser.nama,
+        jabatan:     newUser.jabatan,
+        generasi:    String(newUser.generasi),
+        member_id:   newUser.id,
+        is_admin:    false,
+        fingerprint: fp,
+        loginAt:     Date.now(),
+      };
+      localStorage.setItem(SESS_KEY, JSON.stringify(session));
+
+      fetch(`${BACKEND_URL}/api/notify-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nama: newUser.nama, jabatan: newUser.jabatan,
+          generasi: newUser.generasi, fingerprint: fp,
+          ua: navigator.userAgent.slice(0, 120), type: 'register',
+        }),
+      }).catch(() => {});
+
+      window.location.href = '/';
+    } catch (e) {
+      setError(e.message || 'Pendaftaran gagal');
     }
-
-    const fp = getFingerprint();
-
-    // Cek fingerprint
-    if (fingerprintUsed(fp)) {
-      setError('Perangkat ini sudah pernah digunakan untuk mendaftar dengan akun lain.');
-      setLoading(false);
-      return;
-    }
-
-    // Simpan ke extraUsers di localStorage
-    const extras = JSON.parse(localStorage.getItem('pgsk_extra_users') || '[]');
-    const newUser = {
-      nama:        nama.trim(),
-      jabatan:     jabatan.trim(),
-      generasi:    gen,
-      fingerprint: fp,
-      is_admin:    false,
-      id:          `extra_${Date.now()}`,
-      created_at:  new Date().toISOString(),
-    };
-    extras.push(newUser);
-    localStorage.setItem('pgsk_extra_users', JSON.stringify(extras));
-
-    // Update PAGASKA_DB runtime
-    if (window.PAGASKA_DB) {
-      window.PAGASKA_DB._extraUsers = extras;
-    }
-
-    const session = buildSession(newUser, fp);
-    localStorage.setItem(SESS_KEY, JSON.stringify(session));
-
-    notifyLogin({
-      nama: newUser.nama,
-      jabatan: newUser.jabatan,
-      generasi: newUser.generasi,
-      fingerprint: fp,
-      type: 'register',
-    });
-
-    window.location.href = '/';
     setLoading(false);
   };
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-4 relative overflow-hidden bg-bg">
-      {/* Ambient orbs */}
       <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-15 blur-[120px] pointer-events-none orb-anim"
         style={{ background: 'rgba(29,185,84,.4)' }} />
       <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full opacity-10 blur-[100px] pointer-events-none orb-anim-r"
@@ -276,7 +275,6 @@ export default function Login() {
             ))}
           </div>
 
-          {/* Lockout banner */}
           {locked && (
             <div className="bg-rd/10 border border-rd/25 rounded-xl px-4 py-3 mb-4 text-center">
               <i className="fas fa-lock text-rd mb-1 block" />
@@ -288,11 +286,9 @@ export default function Login() {
           )}
 
           <form onSubmit={mode === 'login' ? handleLogin : handleRegister}>
-            {/* Nama */}
             <div className="mb-3">
               <label className="block text-xs font-bold text-t2 mb-1.5">Nama Lengkap</label>
-              <input
-                type="text" value={nama}
+              <input type="text" value={nama}
                 onChange={e => setNama(e.target.value)}
                 placeholder="Contoh: Budi Santoso"
                 disabled={locked}
@@ -301,30 +297,24 @@ export default function Login() {
                   focus:border-g transition-all disabled:opacity-50" />
             </div>
 
-            {/* Jabatan (register only) */}
             {mode === 'register' && (
               <div className="mb-3">
                 <label className="block text-xs font-bold text-t2 mb-1.5">Jabatan</label>
                 <select value={jabatan} onChange={e => setJabatan(e.target.value)}
                   className="w-full bg-s2 border border-white/[0.06] rounded-xl px-4 py-3
-                    text-sm outline-none text-tx focus:border-g transition-all
-                    appearance-none cursor-pointer">
+                    text-sm outline-none text-tx focus:border-g transition-all appearance-none cursor-pointer">
                   <option value="">Pilih jabatan...</option>
-                  {JABATAN_LIST.map(j => (
-                    <option key={j} value={j}>{j}</option>
-                  ))}
+                  {JABATAN_LIST.map(j => <option key={j} value={j}>{j}</option>)}
                 </select>
               </div>
             )}
 
-            {/* Generasi (register only) */}
             {mode === 'register' && (
               <div className="mb-3">
                 <label className="block text-xs font-bold text-t2 mb-1.5">Generasi</label>
                 <div className="grid grid-cols-4 gap-2">
                   {['1', '2', '3', '4'].map(g => (
-                    <button key={g} type="button"
-                      onClick={() => setGen(g)}
+                    <button key={g} type="button" onClick={() => setGen(g)}
                       className={`py-2.5 rounded-xl text-sm font-bold cursor-pointer border transition-all
                         ${gen === g
                           ? 'bg-p text-white border-p shadow-[0_0_12px_rgba(124,92,191,.3)]'
@@ -336,7 +326,6 @@ export default function Login() {
               </div>
             )}
 
-            {/* Error */}
             {error && (
               <div className="bg-rd/10 border border-rd/25 rounded-xl px-3 py-2.5 mb-3
                 text-rd text-xs flex items-center gap-2">
@@ -345,9 +334,7 @@ export default function Login() {
               </div>
             )}
 
-            {/* Submit */}
-            <button type="submit"
-              disabled={loading || locked}
+            <button type="submit" disabled={loading || locked}
               className="w-full py-3 rounded-xl bg-gradient-to-r from-g to-g2 text-black
                 font-bold text-sm cursor-pointer border-none mt-1
                 hover:shadow-[0_0_20px_rgba(29,185,84,.4)] hover:scale-[1.01]
@@ -360,7 +347,6 @@ export default function Login() {
           </form>
         </div>
 
-        {/* Footer */}
         <div className="text-center mt-5 text-t3 text-xs">
           Pagaska Music · PASKIBRA Gala Taksaka SMKN 5 Madiun
         </div>
