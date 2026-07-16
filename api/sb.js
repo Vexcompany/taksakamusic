@@ -17,8 +17,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const SB_URL = process.env.SUPABASE_URL;
-  // Gunakan service_role key agar bisa bypass RLS
-  const SB_KEY = process.env.SUPABASE_SERVICE_KEY;
+  const SB_KEY = process.env.SUPABASE_ANON_KEY;
 
   if (!SB_URL || !SB_KEY) {
     return res.status(500).json({ error: 'Server config missing' });
