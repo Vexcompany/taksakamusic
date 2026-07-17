@@ -1,4 +1,3 @@
-// src/components/ui/EqBars.jsx
 export default function EqBars({ color = 'var(--tw-colors-g, #1DB954)', scale = 1 }) {
   const heights = [10, 20, 7, 17, 13];
   return (
