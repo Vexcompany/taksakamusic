@@ -1,6 +1,4 @@
-// api/sb.js — Vercel Serverless: Supabase Proxy (pakai service_role key)
-// Key tidak pernah keluar ke client
-
+// api/sb.js — Vercel Serverless: Supabase Proxy (anon key, aman di server)
 export default async function handler(req, res) {
   const origin = req.headers.origin || '';
   const allowed = [
