@@ -1,4 +1,3 @@
-// src/components/ui/Skeleton.jsx
 export function SkeletonCard() {
   return (
     <div className="bg-s1 border border-white/[0.06] rounded-xl p-3 overflow-hidden">
