@@ -1,4 +1,3 @@
-// src/components/ui/Toast.jsx
 import { useApp } from '../../context/AppContext';
 
 export default function Toast() {
