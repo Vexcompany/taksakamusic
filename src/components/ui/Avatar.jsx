@@ -1,4 +1,3 @@
-// src/components/ui/Avatar.jsx
 import { useState, useEffect } from 'react';
 import { usePlayer } from '../../context/PlayerContext';
 import { getInitials } from '../../lib/utils';
