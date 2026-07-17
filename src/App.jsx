@@ -19,6 +19,7 @@ const Chat     = lazy(() => import('./pages/Chat'));
 const Party    = lazy(() => import('./pages/Party'));
 const Playlist = lazy(() => import('./pages/Playlist'));
 const Profil   = lazy(() => import('./pages/Profil'));
+const Vtuber   = lazy(() => import('./pages/Vtuber'));
 const Login    = lazy(() => import('./pages/Login'));
 
 function PageLoading() {
@@ -88,6 +89,7 @@ function AppShell() {
           <Route path="/party"    element={<Party />} />
           <Route path="/playlist" element={<Playlist />} />
           <Route path="/profil"   element={<Profil />} />
+          <Route path="/vtuber"   element={<Vtuber />} />
           <Route path="*"         element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
