@@ -68,7 +68,6 @@ export function PlayerProvider({ children }) {
   // Init audio element
   useEffect(() => {
     const audio = audioRef.current;
-    audio.crossOrigin = 'anonymous';
     audio.volume = state.volume;
 
     const onPlay   = () => dispatch({ type: 'SET_PLAYING', payload: true });
