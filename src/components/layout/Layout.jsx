@@ -1,5 +1,4 @@
 // src/components/layout/Layout.jsx
-import { useState } from 'react';
 import Topbar from './Topbar';
 import BottomNav from './BottomNav';
 import MiniPlayer from '../player/MiniPlayer';
@@ -8,16 +7,34 @@ import Toast from '../ui/Toast';
 import { usePlayer } from '../../context/PlayerContext';
 
 export default function Layout({ children }) {
-  const { current } = usePlayer();
-  const [npOpen, setNpOpen] = useState(false);
+  const { current, npOpen, dispatch } = usePlayer();
+
+  const openNP  = () => dispatch({ type: 'SET_NP_OPEN', payload: true });
+  const closeNP = () => dispatch({ type: 'SET_NP_OPEN', payload: false });
 
   return (
-    <div className="min-h-dvh flex flex-col">
+    <div className="min-h-dvh flex flex-col relative">
+      {/* Ambient orbs */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute rounded-full opacity-100 orb-anim"
+          style={{
+            width: 'min(800px,100vw)', height: 'min(600px,80vw)',
+            background: 'radial-gradient(ellipse,rgba(124,92,191,.12) 0%,transparent 70%)',
+            top: '-20%', left: '-15%', filter: 'blur(120px)',
+          }} />
+        <div className="absolute rounded-full opacity-100 orb-anim-r"
+          style={{
+            width: 'min(700px,90vw)', height: 'min(500px,70vw)',
+            background: 'radial-gradient(ellipse,rgba(29,185,84,.07) 0%,transparent 70%)',
+            bottom: '-15%', right: '-10%', filter: 'blur(120px)',
+          }} />
+      </div>
+
       <Topbar />
 
       {/* Page content */}
       <main
-        className="flex-1 overflow-y-auto page-enter"
+        className="relative z-10 flex-1 overflow-y-auto page-enter"
         style={{
           paddingTop:    'calc(env(safe-area-inset-top,0px) + clamp(52px,7vw,60px))',
           paddingBottom: current
@@ -28,13 +45,13 @@ export default function Layout({ children }) {
       </main>
 
       {/* Mini player */}
-      <MiniPlayer onOpen={() => setNpOpen(true)} />
+      <MiniPlayer onOpen={openNP} />
 
       {/* Bottom nav */}
       <BottomNav />
 
       {/* Fullscreen NowPlaying */}
-      {npOpen && <NowPlaying onClose={() => setNpOpen(false)} />}
+      {npOpen && <NowPlaying onClose={closeNP} />}
 
       {/* Toast */}
       <Toast />

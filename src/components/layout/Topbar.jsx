@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Avatar from '../ui/Avatar';
+import Notifications from '../ui/Notifications';
 import { useApp } from '../../context/AppContext';
 import { getInitials } from '../../lib/utils';
 
@@ -81,6 +82,8 @@ export default function Topbar({ onSearch }) {
 
         {/* Right icons */}
         <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Notifications */}
+          <Notifications />
           {/* Chat button */}
           <button onClick={() => navigate('/chat')}
             className="w-11 h-11 rounded-xl bg-s1 border border-white/[0.06] text-t2 
