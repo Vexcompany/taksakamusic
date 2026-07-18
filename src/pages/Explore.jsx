@@ -21,6 +21,7 @@ export default function Explore() {
       setLoading(true);
       try {
         const rows = await sb.get('tracks', 'order=title.asc&limit=500');
+        if (!Array.isArray(rows)) { setLoading(false); return; }
         setTracks(rows.map(r => rowToTrack(r, 'db')));
       } catch (e) { showToast('Gagal: ' + e.message); }
       setLoading(false);

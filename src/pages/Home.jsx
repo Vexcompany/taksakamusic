@@ -314,7 +314,7 @@ export default function Home() {
       setLoading(true);
       try {
         const rows = await sb.get('tracks', 'order=last_played.desc.nullslast&limit=100');
-        setTracks(rows.map(r => rowToTrack(r, 'db')));
+        setTracks((Array.isArray(rows) ? rows : []).map(r => rowToTrack(r, 'db')));
       } catch (e) { showToast('Gagal memuat lagu: ' + e.message); }
       setLoading(false);
     })();
@@ -325,7 +325,7 @@ export default function Home() {
     (async () => {
       try {
         const rows = await sb.get('tracks', 'order=play_count.desc&limit=5&play_count=gt.0');
-        setChart(rows.map(r => rowToTrack(r, 'db')));
+        setChart((Array.isArray(rows) ? rows : []).map(r => rowToTrack(r, 'db')));
       } catch {}
     })();
   }, []);
@@ -566,7 +566,7 @@ export default function Home() {
               <button onClick={() => {
                 setLoading(true);
                 sb.get('tracks', 'order=last_played.desc.nullslast&limit=100')
-                  .then(rows => setTracks(rows.map(r => rowToTrack(r, 'db'))))
+                  .then(rows => setTracks((Array.isArray(rows) ? rows : []).map(r => rowToTrack(r, 'db'))))
                   .catch(() => {})
                   .finally(() => setLoading(false));
               }} className="text-t2 text-xs hover:text-tx cursor-pointer border-none bg-transparent

@@ -132,25 +132,32 @@ export default function Profil() {
 
   const loadProfile = useCallback(async () => {
     try {
+      // FIX: each sb.get() now always returns array, but use .catch() per-request
+      // so one failure (e.g. user_pins table issue) doesn't wipe all data
       const [histRows, pinRows, avRows] = await Promise.all([
-        sb.get('play_history', `user_key=eq.${encodeURIComponent(userKey)}&select=track_id,played_at`),
-        sb.get('user_pins',    `user_key=eq.${encodeURIComponent(userKey)}&order=position.asc`),
-        sb.get('user_avatars', `user_key=eq.${encodeURIComponent(userKey)}&select=avatar_url`),
+        sb.get('play_history', `user_key=eq.${encodeURIComponent(userKey)}&select=track_id,played_at`).catch(() => []),
+        sb.get('user_pins',    `user_key=eq.${encodeURIComponent(userKey)}&order=position.asc`).catch(() => []),
+        sb.get('user_avatars', `user_key=eq.${encodeURIComponent(userKey)}&select=avatar_url`).catch(() => []),
       ]);
 
+      // FIX: guard Array.isArray before .length / .map
+      const safeHist = Array.isArray(histRows) ? histRows : [];
+      const safePins = Array.isArray(pinRows)  ? pinRows  : [];
+      const safeAvs  = Array.isArray(avRows)   ? avRows   : [];
+
       setStats({
-        totalPlays:   histRows.length,
-        uniqueTracks: new Set(histRows.map(r => r.track_id)).size,
+        totalPlays:   safeHist.length,
+        uniqueTracks: new Set(safeHist.map(r => r.track_id)).size,
       });
 
       // Fill 3 slots
       const filled = [null, null, null];
-      for (const pin of (pinRows || [])) {
+      for (const pin of safePins) {
         const idx = (pin.position || 1) - 1;
         if (idx >= 0 && idx < 3) filled[idx] = pin;
       }
       setPins(filled);
-      setAvatarUrl(avRows?.[0]?.avatar_url || null);
+      setAvatarUrl(safeAvs[0]?.avatar_url || null);
     } catch (e) {
       console.log('[Profil] Load error:', e.message);
     }

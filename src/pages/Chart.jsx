@@ -19,38 +19,39 @@ export default function Chart() {
   const [tracks, setTracks]   = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadChart(period);
-  }, [period]);
+  useEffect(() => { loadChart(period); }, [period]);
 
   const loadChart = async (p) => {
     setLoading(true);
     try {
-      let rows;
+      let rows = [];
       if (p === 'all') {
         rows = await sb.get('tracks', 'order=play_count.desc&limit=100&play_count=gt.0');
       } else {
-        const now  = new Date();
+        const now   = new Date();
         const since = new Date(now);
         if (p === 'week')  since.setDate(now.getDate() - 7);
         if (p === 'month') since.setMonth(now.getMonth() - 1);
         const si = since.toISOString();
         const hist = await sb.get('play_history',
           `played_at=gte.${encodeURIComponent(si)}&select=track_id`);
-        if (!hist.length) { setTracks([]); setLoading(false); return; }
+        // FIX: guard Array.isArray (sb.get() now always returns array, but belt+suspenders)
+        if (!Array.isArray(hist) || !hist.length) { setTracks([]); setLoading(false); return; }
         const cm = {};
         hist.forEach(h => { cm[h.track_id] = (cm[h.track_id] || 0) + 1; });
         const ids = Object.keys(cm);
         const tr = await sb.get('tracks',
           `id=in.(${ids.map(id => encodeURIComponent(id)).join(',')})`);
-        rows = tr.map(t => ({ ...t, play_count: cm[t.id] || 0 }))
+        rows = (Array.isArray(tr) ? tr : [])
+          .map(t => ({ ...t, play_count: cm[t.id] || 0 }))
           .filter(t => t.play_count > 0)
           .sort((a, b) => b.play_count - a.play_count)
           .slice(0, 50);
       }
-      setTracks(rows.map(r => rowToTrack(r, 'db')));
+      setTracks((Array.isArray(rows) ? rows : []).map(r => rowToTrack(r, 'db')));
     } catch (e) {
       showToast('Gagal load chart: ' + e.message);
+      setTracks([]);
     }
     setLoading(false);
   };
@@ -106,7 +107,7 @@ export default function Chart() {
 
             return (
               <div key={t.id} onClick={() => handlePlay(t)}
-                className={`grid items-center gap-2 px-3 py-2 rounded-xl cursor-pointer
+                className={`grid items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer
                   border transition-all
                   ${isNow ? 'bg-g/8 border-g/20' : 'border-transparent hover:bg-s2 hover:border-white/[0.06]'}`}
                 style={{ gridTemplateColumns: '28px 44px 1fr auto' }}>
@@ -117,7 +118,7 @@ export default function Chart() {
                 </div>
 
                 {/* Thumb */}
-                <div className="w-11 h-11 rounded-lg overflow-hidden">
+                <div className="w-11 h-11 rounded-lg overflow-hidden flex-shrink-0">
                   <img src={t.thumbnail || PH} alt={t.title}
                     className="w-full h-full object-cover"
                     onError={e => { e.target.src = PH; }} />

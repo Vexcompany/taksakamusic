@@ -111,7 +111,7 @@ export default function Wrapped() {
         `id=in.(${topTrackIds.slice(0, 20).map(id => encodeURIComponent(id)).join(',')})&select=id,duration`
       ).catch(() => []);
       const durMap = {};
-      durationRows.forEach(r => {
+      (Array.isArray(durationRows) ? durationRows : []).forEach(r => {
         if (r.duration) {
           const [m, s] = r.duration.split(':').map(Number);
           durMap[r.id] = (m || 0) * 60 + (s || 0);

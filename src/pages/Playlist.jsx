@@ -76,7 +76,7 @@ function PlaylistDetail({ playlist, onClose }) {
       try {
         const rows = await sb.get('playlist_tracks',
           `playlist_id=eq.${playlist.id}&order=position.asc,added_at.asc`);
-        setTracks(rows);
+        setTracks(Array.isArray(rows) ? rows : []);
       } catch {}
       setLoading(false);
     })();
@@ -174,7 +174,7 @@ export default function PlaylistPage() {
     setLoading(true);
     try {
       const rows = await sb.get('playlists', 'order=created_at.desc');
-      setPlaylists(rows);
+      setPlaylists(Array.isArray(rows) ? rows : []);
     } catch (e) { showToast('Gagal load playlist: ' + e.message); }
     setLoading(false);
   };
