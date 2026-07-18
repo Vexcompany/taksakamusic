@@ -239,8 +239,14 @@ export default function ChatPage() {
       </div>
 
       {/* Taksaka AI bot entry */}
-      <div className="bg-gradient-to-r from-g/8 to-p/8 border border-g/25 rounded-2xl
-        p-3.5 mb-3 flex items-center gap-3 cursor-pointer hover:border-g/40 transition-all">
+      <div
+        onClick={() => {
+          if (window.TaksakaGroup?.open) window.TaksakaGroup.open();
+          else if (window.openAIChat) window.openAIChat();
+          else showToast('Taksaka AI sedang dimuat...');
+        }}
+        className="bg-gradient-to-r from-g/8 to-p/8 border border-g/25 rounded-2xl
+          p-3.5 mb-3 flex items-center gap-3 cursor-pointer hover:border-g/40 transition-all active:scale-[0.98]">
         <div className="relative w-11 h-11 flex-shrink-0">
           <div className="absolute top-0 left-0 w-7 h-7 rounded-full z-10
             bg-gradient-to-br from-g to-g2 flex items-center justify-center
@@ -250,10 +256,32 @@ export default function ChatPage() {
             text-[0.5rem] font-black text-white border-2 border-bg">DT</div>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-bold">Grup Taksaka</div>
+          <div className="text-sm font-bold">Grup Taksaka AI</div>
           <div className="text-xs text-t2">Kak Taksaka & Dokter Taksaka siap membantu...</div>
         </div>
-        <div className="text-g text-xs font-bold flex-shrink-0">Online</div>
+        <div className="flex items-center gap-1 text-g text-xs font-bold flex-shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-g animate-pulse" />
+          Online
+        </div>
+      </div>
+
+      {/* Music Room entry */}
+      <div
+        onClick={() => {
+          if (window.MusicRoom?.open) window.MusicRoom.open();
+          else showToast('Music Room segera hadir!');
+        }}
+        className="bg-s1 border border-white/[0.06] rounded-2xl
+          p-3.5 mb-3 flex items-center gap-3 cursor-pointer hover:border-p/30 transition-all active:scale-[0.98]">
+        <div className="w-11 h-11 rounded-full flex-shrink-0 bg-gradient-to-br from-p to-bl
+          flex items-center justify-center text-white text-sm">
+          <i className="fas fa-headphones" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold">Music Room</div>
+          <div className="text-xs text-t2">Dengarkan bersama atau mode Karaoke</div>
+        </div>
+        <i className="fas fa-chevron-right text-t3 text-xs flex-shrink-0" />
       </div>
 
       {/* Divider */}
