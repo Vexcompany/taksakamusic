@@ -9,6 +9,7 @@ import { loadConfig } from './lib/supabase';
 import { getSession } from './lib/utils';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useRealtime } from './hooks/useRealtime';
+import { useProfileSync } from './hooks/useProfileSync';
 
 const Home     = lazy(() => import('./pages/Home'));
 const Chart    = lazy(() => import('./pages/Chart'));
@@ -36,6 +37,7 @@ function AppShell() {
   const location = useLocation();
 
   useKeyboardShortcuts();
+  useProfileSync();
   useRealtime({
     onMessage: (msg) => {
       const myKey = session ? session.nama + '_' + session.generasi : '';
@@ -106,4 +108,3 @@ export default function App() {
     </AppProvider>
   );
 }
-
