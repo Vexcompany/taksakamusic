@@ -18,9 +18,23 @@
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Inter:wght@400;500;600&display=swap" />
     <!-- Supabase Realtime JS (for presence & live chat) -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <!-- Taksaka Group AI Chat (obfuscated, must run after SB_URL/SB_KEY are set) -->
+    <script>
+      // Stub globals needed by legacy scripts
+      window.SB_URL = '';
+      window.SB_KEY = '';
+      window.USER_KEY = 'guest';
+      window.toast = (msg) => { window.__pgsk_toast?.(msg); };
+      window.addToQueue = () => {};
+      window.playTrackObj = () => {};
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <!-- Cinematic Lyrics — loads after DOM -->
+    <script src="/cinematic-lyrics.js" defer></script>
+    <!-- Taksaka Group AI -->
+    <script src="/taksaka-group.js" defer></script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
