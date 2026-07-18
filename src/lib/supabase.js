@@ -1,6 +1,7 @@
 // src/lib/supabase.js
 // Supabase REST client — mirrors the original sb object in index.html
 // Config is fetched from /api/config (Vercel serverless)
+// FIX: sb.get() always returns an array — guards against null/non-array Supabase responses
 
 let SB_URL = '';
 let SB_KEY = '';
@@ -31,10 +32,24 @@ const sb = {
     return data;
   },
 
-  get(table, query)       { return this.req('GET',    table, query); },
-  post(table, body)       { return this.req('POST',   table, '',    body); },
-  patch(table, query, body){ return this.req('PATCH', table, query, body); },
-  del(table, query)       { return this.req('DELETE', table, query); },
+  // FIX: GET always returns an array — Supabase returns [] for no rows,
+  // but can return null or an object on edge cases (e.g. RLS block, malformed query).
+  async get(table, query) {
+    const data = await this.req('GET', table, query);
+    if (Array.isArray(data)) return data;
+    if (data === null || data === undefined) return [];
+    // Supabase occasionally returns a single object (count query, etc.) — wrap it
+    if (typeof data === 'object' && !Array.isArray(data)) {
+      // If it looks like an error object, throw
+      if (data.message || data.error) throw new Error(data.message || data.error);
+      return [data];
+    }
+    return [];
+  },
+
+  post(table, body)        { return this.req('POST',   table, '',    body); },
+  patch(table, query, body){ return this.req('PATCH',  table, query, body); },
+  del(table, query)        { return this.req('DELETE', table, query); },
 
   async rpc(fnName, params) {
     const res = await fetch(`${SB_URL}/rest/v1/rpc/${fnName}`, {
